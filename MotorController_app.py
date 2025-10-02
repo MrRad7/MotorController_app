@@ -31,14 +31,14 @@ HEALTH_CHECK_TIME = 60
 
 LOGFILENAME = '/var/log/MotorController_app.log'
 
-
-#rabbitmq_pid_file = "/var/run/rabbitmq/pid"
-#rabbitmq_pid_file = "/var/lib/rabbitmq/mnesia/rabbit@raspberrypi-train.pid"
-
 ERROR_CODE = -1
 
 
 def output(output_string='') :
+    """ output function used by MotorController_app
+    Currently using the logging utility for output.
+    """
+    
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
     
     output_string = str(timestamp) + ':' + str(output_string)
@@ -50,6 +50,7 @@ def output(output_string='') :
         logging.info(str(output_string))
         
     return 0
+
 
 
 def check_request(body):
@@ -231,21 +232,28 @@ def exit_gracefully(signum, frame):
 
 
 def find_serial_port():
-	ports = list(serial.tools.list_ports.comports())
-	for p in ports:
-		print(p)
-		#print(type(p))
-		#print(p.description)
-		
-		if 'Pololu' in p.description:
-			print("Found Pololu at " + str(p.device))
-			return p.device
-		
-		
-	return 0
+    """
+    Uses serial tools to look through available serial ports for those
+    identifying as "Pololu"
+    """
+    ports = list(serial.tools.list_ports.comports())
+    for p in ports:
+	    print(p)
+	    #print(type(p))
+	    #print(p.description)
+	    
+	    if 'Pololu' in p.description:
+		    print("Found Pololu at " + str(p.device))
+		    return p.device
+	    
+	    
+    return 0
 	
 	
 def get_serial_device():
+  """
+  Connects to the given serial device and returns an smc object.
+  """
   port_name = "/dev/ttyACM0" #default value
   baud_rate = 9600
   device_number = None
@@ -268,8 +276,6 @@ def get_serial_device():
 '''
   port = serial.Serial(port_name, baud_rate, timeout=2, write_timeout=0.1)
 
-  #output("HERE")
-  
   
   try:
     smc = mc.SmcG2Serial(port, device_number)
@@ -278,13 +284,14 @@ def get_serial_device():
     print("Cannot create serial device")
     sys.exit(1)
     return False
-
-  #output("GOOD")
   
   return smc
 
 
 def health_check(smc):
+    """
+    Checks if the motorcontroller can be reached.
+    """
     while True:
         if smc.health_check() is False:
             output("MotorController cannot be reached.")
@@ -294,19 +301,26 @@ def health_check(smc):
 
 
 def join_all_threads():
-	main_thread = threading.current_thread()
-	for t in threading.enumerate():
-		if t is main_thread:
-			continue
-		thread_name = t.name
-		#print("Thread name = %s" % thread_name, file=sys.stderr)
-		if thread_name.startswith('Dummy'):
+    """
+    Ensures that all running threads will terminate gracefully.
+    """
+    main_thread = threading.current_thread()
+    for t in threading.enumerate():
+	    if t is main_thread:
+		    continue
+	    thread_name = t.name
+	    #print("Thread name = %s" % thread_name, file=sys.stderr)
+	    if thread_name.startswith('Dummy'):
                         continue
-		#print("Joining %s" % (t.name), file=sys.stderr)
-		logging.debug("Joining %s", t.name)
-		t.join(1.0)
+	    #print("Joining %s" % (t.name), file=sys.stderr)
+	    logging.debug("Joining %s", t.name)
+	    t.join(1.0)
+		
 		
 def exit_gracefully():
+    """
+    Exits the program after setting the STOP flag and joining all threads.
+    """
     STOP = 1
     join_all_threads()
     sys.exit(0)
@@ -317,106 +331,106 @@ def exit_gracefully():
 ##########################################################################################
 
 ### Initialize ######
+if __name__ == "__main__":
+
+    #original_sigint = signal.getsignal(signal.SIGINT)
+    #signal.signal(signal.SIGINT, exit_gracefully)
+
+    # enable logging
+
+    if DEBUG :
+        log_level = 'DEBUG'
+    else :
+        log_level = 'INFO';
 
 
-#original_sigint = signal.getsignal(signal.SIGINT)
-#signal.signal(signal.SIGINT, exit_gracefully)
-
-# enable logging
-
-if DEBUG :
-    log_level = 'DEBUG'
-else :
-    log_level = 'INFO';
+    #translate string log level to a numeric log level
+    numeric_level = getattr(logging, log_level.upper(), 10)
 
 
-#translate string log level to a numeric log level
-numeric_level = getattr(logging, log_level.upper(), 10)
-
-
-try:
-    #logging.basicConfig(filename=log_filename, level=logging.DEBUG)
-    logging.basicConfig(filename=LOGFILENAME, level=numeric_level)
-except IOError:
-    print("Could not open log file:", log_filename, file=sys.stderr)
-    print("Exiting.", file=sys.stderr)
-    sys.exit()
-
-#logging.debug("Test")
-
-
-output("Starting MotorController_app")
-
-try:
-    smc = get_serial_device()
-except:
-    output("Could not open serial device, exiting.")
-    sys.exit()
-
-
-
-health_check_thread = Thread(target = health_check, args = (smc,))
-#health_check_thread.setDaemon(True)
-health_check_thread.daemon = True
-health_check_thread.start()
-
-
-firmware_version = smc.get_firmware_version()
-print(str(firmware_version))
-
-# Make sure that RabbitMQ is running!
-try:
-	stat = subprocess.call(["systemctl", "is-active", "--quiet", "rabbitmq-server"])
-except ValueError as e:
-        msg = "{'type': 'ERROR', 'value': " + str(e) + "}"
-        output(str(msg))
-        print("Error getting status of rabbitmq-server: %s" % str(e)) 
-
-if stat == 0: #this is good
-        e = "'rabbitmq-server is running'"
-        msg = "{'type': 'rabbitmq-server_status', 'value': " + str(e) + "}"
-        output(str(msg))
-else:
-        #rabbitmq-server is NOT running
-        e = "'rabbitmq-server is NOT running!'"
-        msg = "{'type': 'ERROR', 'value': " + str(e) + "}"
-        output(str(msg))
-        print("rabbitmq-server is NOT running!")
-        e = "'rabbitmq-server is NOT running'"
-        msg = "{'type': 'rabbotmq-server', 'value': " + str(e) + "}"
-        output(str(msg))
+    try:
+        #logging.basicConfig(filename=log_filename, level=logging.DEBUG)
+        logging.basicConfig(filename=LOGFILENAME, level=numeric_level)
+    except IOError:
+        print("Could not open log file:", log_filename, file=sys.stderr)
+        print("Exiting.", file=sys.stderr)
         sys.exit()
-        #attempt restart?
+
+    #logging.debug("Test")
+
+
+    output("Starting MotorController_app")
+
+    try:
+        smc = get_serial_device()
+    except:
+        output("Could not open serial device, exiting.")
+        sys.exit()
 
 
 
-# Configure RabbitMQ event loop
-connection = pika.BlockingConnection(pika.ConnectionParameters(
-        host='localhost'))
-
-channel = connection.channel()
-
-#channel.queue_declare(queue='motorcontroller_queue')
-channel.queue_declare(queue='motorcontroller_queue', durable=True, exclusive=False, auto_delete=False)
-
-channel.basic_qos(prefetch_count=1)
-#channel.basic_consume(on_request, queue='motorcontroller_queue')
-channel.basic_consume('motorcontroller_queue', on_request)
+    health_check_thread = Thread(target = health_check, args = (smc,))
+    #health_check_thread.setDaemon(True)
+    health_check_thread.daemon = True
+    health_check_thread.start()
 
 
-# Start RabbitMQ event loop
-print(" [x] Awaiting RPC requests")
+    firmware_version = smc.get_firmware_version()
+    print(str(firmware_version))
 
-# Reduce pika logging
-logging.getLogger("pika").setLevel(logging.WARNING)
-    
-try:
-    channel.start_consuming()
-except KeyboardInterrupt:
-    channel.stop_consuming()
+    # Make sure that RabbitMQ is running!
+    try:
+	    stat = subprocess.call(["systemctl", "is-active", "--quiet", "rabbitmq-server"])
+    except ValueError as e:
+            msg = "{'type': 'ERROR', 'value': " + str(e) + "}"
+            output(str(msg))
+            print("Error getting status of rabbitmq-server: %s" % str(e)) 
 
-connection.close()    
-exit_gracefully()
+    if stat == 0: #this is good
+            e = "'rabbitmq-server is running'"
+            msg = "{'type': 'rabbitmq-server_status', 'value': " + str(e) + "}"
+            output(str(msg))
+    else:
+            #rabbitmq-server is NOT running
+            e = "'rabbitmq-server is NOT running!'"
+            msg = "{'type': 'ERROR', 'value': " + str(e) + "}"
+            output(str(msg))
+            print("rabbitmq-server is NOT running!")
+            e = "'rabbitmq-server is NOT running'"
+            msg = "{'type': 'rabbotmq-server', 'value': " + str(e) + "}"
+            output(str(msg))
+            sys.exit()
+            #attempt restart?
+
+
+
+    # Configure RabbitMQ event loop
+    connection = pika.BlockingConnection(pika.ConnectionParameters(
+            host='localhost'))
+
+    channel = connection.channel()
+
+    #channel.queue_declare(queue='motorcontroller_queue')
+    channel.queue_declare(queue='motorcontroller_queue', durable=True, exclusive=False, auto_delete=False)
+
+    channel.basic_qos(prefetch_count=1)
+    #channel.basic_consume(on_request, queue='motorcontroller_queue')
+    channel.basic_consume('motorcontroller_queue', on_request)
+
+
+    # Start RabbitMQ event loop
+    print(" [x] Awaiting RPC requests")
+
+    # Reduce pika logging
+    logging.getLogger("pika").setLevel(logging.WARNING)
+        
+    try:
+        channel.start_consuming()
+    except KeyboardInterrupt:
+        channel.stop_consuming()
+
+    connection.close()    
+    exit_gracefully()
 
 
 
