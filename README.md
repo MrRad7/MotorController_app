@@ -3,3 +3,6 @@ MotorController_app uses Python to control a Pololu High-Power Simple Motor Cont
 This is part of a system for automatically controlling model trains.
 
 MotorController_app currently gets commands from RabbitMQ
+
+mc_client.py is a small client program for testing.
+
