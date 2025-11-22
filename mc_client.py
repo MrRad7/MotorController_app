@@ -6,7 +6,7 @@ import json
 import argparse
 import MotorController as mc
 
-command_list = ["version", "config", "status", "start_b", "forward", "reverse", "read_error", "stop", "info", "temp", "voltage", "current"] 
+command_list = ["version", "status", "start_b", "forward", "reverse", "read_error", "half_speed", "slow_stop", "stop", "info", "temp", "voltage", "current"] 
 
 
 class MotorControllerRpcClient(object):

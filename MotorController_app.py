@@ -53,7 +53,40 @@ def output(output_string='') :
 
 
 
+def half_speed():
+    """Reduce speed to half by 4 increments """
+    #print(f"In half_speed")
+    target_speed = smc.get_target_speed()
+    #output("Target speed: " + str(target_speed))
+    
+    current_speed = float(smc.get_current_speed())
+    #output("Current speed: " + str(target_speed))
+    half_speed = current_speed / 2
+    #output("Half speed: " + str(half_speed))
+    increment_value = half_speed / 4
+    #output("Increment value: " + str(increment_value))      
+    
+    value1 = current_speed - increment_value    
+    value2 = value1 - increment_value
+    value3 = value2 - increment_value
+    value4 = value3 - increment_value
+    my_ramp_values = [int(value1), int(value2), int(value3), int(value4)] #can't be floats
+    #output("RAMPVALUES0: " + str(my_ramp_values))
+    
+    ramp_sleep = 2 #2 seconds
+    
+    for ramp_value in my_ramp_values:
+        #output("RAMP: " + str(ramp_value))
+        result = smc.set_target_speed(ramp_value)
+        time.sleep(ramp_sleep)
+        
+    return result
+    
+
 def check_request(body):
+    """ Process commands for the MotorController sent from elsewhere. 
+        Returns the result from the MotorController board
+    """
     try:
         command_json = str(body.decode("utf-8","strict"))
     except:
@@ -111,12 +144,6 @@ def check_request(body):
         
         return result
 
-    if my_command == "config":
-        try:
-            result = get_motor_config(gertbot_board,gertbot_channel)
-        except:
-            return False
-        return result
 
     if my_command == "version":
         result = smc.get_firmware_version()
@@ -142,8 +169,10 @@ def check_request(body):
         
     if my_command == "info":
         temp = str(smc.get_temp())
-        voltage = str(smc.get_input_voltage()) 
-        current = str(smc.get_current())
+        voltage = smc.get_input_voltage() 
+        voltage = str(voltage)
+        current = smc.get_current()
+        current = str(current)
         #info_string = temp + ',' + voltage + ',' + current 
         result_dict = {"temp": temp, "voltage": voltage, "current": current}
         #response_dict = result_dict["response"]
@@ -185,8 +214,26 @@ def check_request(body):
             time.sleep(ramp_sleep)
         return result
     
+    
+    if (my_command == "half_speed" or my_command == "50"): 
+        '''Slow by half '''
+        smc.set_motor_brake(0) #coasting 
+        result = half_speed()
+        
+        return result  
+              
+    
+    if (my_command == "slow_stop"): #slow by half and then stop
+        '''Slow to half speed, then stop '''
+        result = half_speed()
+        time.sleep(1)
+        result = smc.stop_motor()
+        
+        return result
+    
+    
     if my_command == "stop":
-        #result = stop_pwm_brushed(gertbot_board,gertbot_channel)
+        smc.set_motor_brake(0) #coasting
         result = smc.stop_motor()
         return result
 
@@ -199,6 +246,7 @@ def check_request(body):
 
 
 def on_request(ch, method, props, body):
+    """ Get requests from the RabbitMQ queue, process and respond. """
     #body should be a byte code 
     #print(type(body), repr(body))
 
@@ -223,6 +271,7 @@ def on_request(ch, method, props, body):
 
 
 def exit_gracefully(signum, frame):
+    """ Handle system signals/interrupts """
     signal.signal(signal.SIGINT, original_sigint)
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S") 
     output("Exiting at %s\n" % (str(timestamp)))
@@ -377,6 +426,11 @@ if __name__ == "__main__":
 
     firmware_version = smc.get_firmware_version()
     print(str(firmware_version))
+    
+    
+    smc.set_motor_brake(0) #coasting
+    print("Brake amount: " + str(smc.get_brake_amount()))
+    
 
     # Make sure that RabbitMQ is running!
     try:
