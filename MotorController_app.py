@@ -53,17 +53,28 @@ def output(output_string='') :
 
 
 
-def half_speed():
-    """Reduce speed to half by 4 increments """
+def reduce_speed(end_speed=50):
+    """Reduce speed to end by 4 increments """
     #print(f"In half_speed")
     target_speed = smc.get_target_speed()
     #output("Target speed: " + str(target_speed))
     
     current_speed = float(smc.get_current_speed())
     #output("Current speed: " + str(target_speed))
-    half_speed = current_speed / 2
+    
+    end_speed = int(end_speed) #make sure it's an integer
+    if ((end_speed < 1) or (end_speed > 100)):
+        logging.error("In reduce_speed: end_speed must be between 1 and 100")
+        return False
+        
+    end_speed = end_speed * .01  #make it a percentage
+    
+    #reduced_speed = current_speed / 2
+    reduced_speed = int(current_speed * end_speed)
+    
+    
     #output("Half speed: " + str(half_speed))
-    increment_value = half_speed / 4
+    increment_value = int((current_speed - reduced_speed) / 4)
     #output("Increment value: " + str(increment_value))      
     
     value1 = current_speed - increment_value    
@@ -215,20 +226,23 @@ def check_request(body):
         return result
     
     
+    if (my_command == "75_speed" or my_command == "75"):
+        '''Slow by 25%'''
+        result = reduce_speed(75)
+        return result
+        
+        
     if (my_command == "half_speed" or my_command == "50"): 
         '''Slow by half '''
-        smc.set_motor_brake(0) #coasting 
-        result = half_speed()
-        
+        result = reduce_speed(50)
         return result  
               
     
     if (my_command == "slow_stop"): #slow by half and then stop
         '''Slow to half speed, then stop '''
-        result = half_speed()
+        result = reduce_speed(50)
         time.sleep(1)
         result = smc.stop_motor()
-        
         return result
     
     
